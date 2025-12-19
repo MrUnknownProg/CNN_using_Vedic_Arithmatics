@@ -37,13 +37,13 @@ layers = [
 %% -------------------------------
 % Step 3: Training options
 %% -------------------------------
-options = trainingOptions('sgdm', ...
-    'MaxEpochs',5, ...
-    'MiniBatchSize',128, ...
+options = trainingOptions('adam', ...
+    'MaxEpochs',25, ...
+    'MiniBatchSize',64, ...
     'InitialLearnRate',0.01, ...
     'Shuffle','every-epoch', ...
     'Verbose',true, ...
-    'Plots','training-progress');
+    'Plots','none');
 
 %% -------------------------------
 % Step 4: Train network
@@ -79,57 +79,58 @@ biases_q  = int16(biases * SCALE);
 %% -------------------------------
 % Step 8: Save kernels for RTL
 %% -------------------------------
-mkdir kernels
-
-for k = 1:size(weights_q,4)
-    kernel = weights_q(:,:,1,k);
-
-    fname = sprintf("kernels/kernel_%d.txt", k);
-    fid = fopen(fname,'w');
-
-    for i = 1:3
-        for j = 1:3
-            fprintf(fid,"%d\n", kernel(i,j));
-        end
-    end
-    fclose(fid);
-end
-
-fid = fopen("kernels/biases.txt",'w');
-for k = 1:length(biases_q)
-    fprintf(fid,"%d\n", biases_q(k));
-end
-fclose(fid);
-
-fprintf("Kernels & biases saved in /kernels folder\n");
+% mkdir kernels
+% 
+% for k = 1:size(weights_q,4)
+%     kernel = weights_q(:,:,1,k);
+% 
+%     fname = sprintf("kernels/kernel_%d.txt", k);
+%     fid = fopen(fname,'w');
+% 
+%     for i = 1:3
+%         for j = 1:3
+%             fprintf(fid,"%d\n", kernel(i,j));
+%         end
+%     end
+%     fclose(fid);
+% end
+% 
+% fid = fopen("kernels/biases.txt",'w');
+% for k = 1:length(biases_q)
+%     fprintf(fid,"%d\n", biases_q(k));
+% end
+% fclose(fid);
+% 
+% fprintf("Kernels & biases saved in /kernels folder\n");
 
 %% -------------------------------
 % Step 9: Fixed-point reference check
 %% -------------------------------
-% img = XTest(:,:,:,1);          % one test digit
-% img_u8 = uint8(img * 255);     % FPGA-style input
-% 
-% kernel_fpga = double(weights_q(:,:,1,1));
-% bias_fpga   = double(biases_q(1));
-% 
-% ref = conv2(double(img_u8), kernel_fpga, 'valid');
-% ref = ref + bias_fpga;
-% ref = max(ref,0);              % ReLU
-% 
-% figure;
-% imagesc(ref); colormap gray;
-% title("Reference FPGA-style Conv Output (Kernel 1)");
-% 
-% fprintf("Fixed-point reference generated\n");
+img = XTest(:,:,:,2000);          % one test digit
+trueLabel =YTest(2000);
+img_u8 = uint8(img * 255);     % FPGA-style input
+
+kernel_fpga = double(weights_q(:,:,1,1));
+bias_fpga   = double(biases_q(1));
+
+ref = conv2(double(img_u8), kernel_fpga, 'valid');
+ref = ref + bias_fpga;
+ref = max(ref,0);              % ReLU
+
+figure;
+imagesc(ref); colormap gray;
+title("Reference FPGA-style Conv Output (Kernel 1)");
+
+fprintf("Fixed-point reference generated\n");
 
 %% -------------------------------
 % PREDICTION
 %% -------------------------------
 
-idx = 900;   % any index from 1 to 10000
-
-img = XTest(:,:,:,idx);
-trueLabel = YTest(idx);
+% idx = 4000;   % any index from 1 to 10000
+% 
+% img = XTest(:,:,:,idx);
+% trueLabel = YTest(idx);
 
 predLabel = classify(net, img);
 
@@ -140,7 +141,7 @@ disp(scores);
 fprintf("True Label      : %s\n", string(trueLabel));
 fprintf("Predicted Label : %s\n", string(predLabel));
 
-figure;
-imshow(img);
-title("Test Image");
+% figure;
+% imshow(img);
+% title("Test Image");
 
