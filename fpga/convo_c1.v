@@ -3,9 +3,9 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date: 19.01.2026 09:45:56
+// Create Date: 24.01.2026 17:17:51
 // Design Name: 
-// Module Name: convo_c1
+// Module Name: top
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
@@ -19,205 +19,117 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-//module convo_c1 (
-//    input              clk,
-//    input              rst,
-//    input              pixel_valid,
-//    input      [7:0]   pixel_in,
+//(*use_dsp = "yes"*)
 
-//    input      [199:0] weight_flat,   // 25 × 8-bit weights
-
-//    output reg [19:0]  conv_out,
-//    output reg         out_valid
-//);
-
-//    // =========================================================
-//    // INTERNAL SIGNALS
-//    // =========================================================
-//    wire [7:0] row0, row1, row2, row3, row4;
-//    wire [199:0] win_flat;
-
-//    wire [7:0] win    [0:24];
-//    wire [7:0] weight [0:24];
-
-//    wire  [19:0] acc   [0:25];
-    
-//    assign acc[0] = 20'd0;
-
-//    // =========================================================
-//    // UNPACK FLATTENED BUSES (LEGAL: INTERNAL ONLY)
-//    // =========================================================
-//    genvar u;
-//    generate
-//        for (u = 0; u < 25; u = u + 1) begin : UNPACK
-//            assign win[u]    = win_flat[u*8 +: 8];
-//            assign weight[u] = weight_flat[u*8 +: 8];
-//        end
-//    endgenerate
-
-//    // =========================================================
-//    // LINE BUFFERS (VERTICAL DELAY)
-//    // =========================================================
-//    line_buffer_5 #(
-//        .IMG_W(28)
-//    ) LB (
-//        .clk      (clk),
-//        .en       (pixel_valid),
-//        .pixel_in (pixel_in),
-//        .row0     (row0),
-//        .row1     (row1),
-//        .row2     (row2),
-//        .row3     (row3),
-//        .row4     (row4)
-//    );
-
-//    // =========================================================
-//    // SLIDING WINDOW (HORIZONTAL SHIFT)
-//    // =========================================================
-//    sliding_window_5x5 SW (
-//        .clk      (clk),
-//        .en       (pixel_valid),
-//        .row0     (row0),
-//        .row1     (row1),
-//        .row2     (row2),
-//        .row3     (row3),
-//        .row4     (row4),
-//        .win_flat (win_flat)
-//    );
-
-    
-//    // =========================================================
-//    // 25 PARALLEL MACs (TRUE SYSTOLIC ARRAY)
-//    // =========================================================
-//    genvar g;
-//    generate
-//        for (g = 0; g < 25; g = g + 1) begin : SYSTOLIC_MACS
-//            (* keep = "true" *)
-//            mac_vedic MAC (
-//                .clk     (clk),
-//                .en      (pixel_valid),
-//                .pixel   (win[g]),
-//                .weight  (weight[g]),
-//                .acc_in  (acc[g]),
-//                .acc_out (acc[g+1])
-//            );
-//        end
-//    endgenerate
-
-//    // =========================================================
-//    // REGISTERED OUTPUT (ONLY LEGAL WAY)
-//    // =========================================================
-    
-//    always @(posedge clk) begin
-//    if (rst) begin
-//        conv_out  <= 20'd0;
-//        out_valid <= 1'b0;
-//    end else begin
-//        conv_out  <= acc[25];   // ✅ acc[25] is now a WIRE
-//        out_valid <= pixel_valid;
-//    end
-//end
-
-//endmodule
-
-`timescale 1ns / 1ps
-
-(* keep_hierarchy = "yes" *)
-module convo_c1_3x3_systolic (
+module conv3x3_bram_top #(
+    parameter IMG_W = 28,
+    parameter OUT_W = 26
+)(
     input              clk,
-    input              rst,
-    input              pixel_valid,
+    input              en,
+
     input      [7:0]   pixel_in,
 
-    input      [71:0]  weight_flat,   // 9 × 8-bit weights
+    input      [7:0]   w0,
+    input      [7:0]   w1,
+    input      [7:0]   w2,
 
-    output reg [19:0]  conv_out,
-    output reg         out_valid
+    input      [12:0]  rd_addr,
+    input              rd_en,
+    output reg [19:0]  rd_data
 );
 
-    // =====================================================
-    // INTERNAL SIGNALS
-    // =====================================================
+    // Number of sliding windows
+    localparam TOTAL_WINDOWS = OUT_W * OUT_W;
+
+    // BRAM: 9 outputs per window
+    reg [19:0] fmap_bram [0:TOTAL_WINDOWS*9-1];
+
+    /* ===== Existing pipeline (UNCHANGED) ===== */
+
     wire [7:0] row0, row1, row2;
     wire [71:0] win_flat;
 
-    wire [7:0] win    [0:8];
-    wire [7:0] weight [0:8];
-
-    // IMPORTANT: accumulator chain is WIRE (forum fix)
-    wire [19:0] acc [0:9];
-
-    // =====================================================
-    // UNPACK FLATTENED BUSES
-    // =====================================================
-    genvar u;
-    generate
-        for (u = 0; u < 9; u = u + 1) begin : UNPACK
-            assign win[u]    = win_flat[u*8 +: 8];
-            assign weight[u] = weight_flat[u*8 +: 8];
-        end
-    endgenerate
-
-    // =====================================================
-    // LINE BUFFERS (2 ROW DELAY FOR 3×3)
-    // =====================================================
-    line_buffer_3 #(
-        .IMG_W(28)
-    ) LB (
-        .clk      (clk),
-        .en       (pixel_valid),
-        .pixel_in (pixel_in),
-        .row0     (row0),
-        .row1     (row1),
-        .row2     (row2)
+    line_buffer_3 #(.IMG_W(IMG_W)) lb (
+        .clk(clk),
+        .en(en),
+        .pixel_in(pixel_in),
+        .row0(row0),
+        .row1(row1),
+        .row2(row2)
     );
 
-    // =====================================================
-    // SLIDING WINDOW (3×3)
-    // =====================================================
-    sliding_window_3x3 SW (
-        .clk      (clk),
-        .en       (pixel_valid),
-        .row0     (row0),
-        .row1     (row1),
-        .row2     (row2),
-        .win_flat (win_flat)
+    sliding_window_3x3 sw (
+        .clk(clk),
+        .en(en),
+        .row0(row0),
+        .row1(row1),
+        .row2(row2),
+        .win_flat(win_flat)
     );
 
-    // =====================================================
-    // HEAD OF SYSTOLIC CHAIN (WIRE CONSTANT)
-    // =====================================================
-    assign acc[0] = 20'd0;
+    wire [7:0] p0 = win_flat[6*8 +: 8];
+    wire [7:0] p1 = win_flat[7*8 +: 8];
+    wire [7:0] p2 = win_flat[8*8 +: 8];
 
-    // =====================================================
-    // 9 PARALLEL MACs (TRUE 3×3 SYSTOLIC ARRAY)
-    // =====================================================
-    genvar g;
-    generate
-        for (g = 0; g < 9; g = g + 1) begin : SYSTOLIC_MACS
-            (* keep = "true" *)
-            mac_vedic MAC (
-                .clk     (clk),
-                .en      (pixel_valid),
-                .pixel   (win[g]),
-                .weight  (weight[g]),
-                .acc_in  (acc[g]),
-                .acc_out (acc[g+1])
-            );
-        end
-    endgenerate
+    wire [19:0] o0,o1,o2,o3,o4,o5,o6,o7,o8;
 
-    // =====================================================
-    // OUTPUT REGISTER (STEP-5 WRITEBACK STAGE)
-    // =====================================================
+    systolic_3x3 sa (
+        .clk(clk),
+        .en(en),
+        .pixel_in0(p0),
+        .pixel_in1(p1),
+        .pixel_in2(p2),
+        .weight_in0(w0),
+        .weight_in1(w1),
+        .weight_in2(w2),
+        .out0(o0), .out1(o1), .out2(o2),
+        .out3(o3), .out4(o4), .out5(o5),
+        .out6(o6), .out7(o7), .out8(o8)
+    );
+
+    /* ===== BRAM write control ===== */
+
+    integer win_idx = 0;
+    reg [3:0] write_sel;
+    reg [12:0] wr_addr;
+    reg        we;
+    
     always @(posedge clk) begin
-        if (rst) begin
-            conv_out  <= 20'd0;
-            out_valid <= 1'b0;
+        if (en) begin
+            we <= 1;
+    
+            case (write_sel)
+                0: fmap_bram[wr_addr] <= o0;
+                1: fmap_bram[wr_addr] <= o1;
+                2: fmap_bram[wr_addr] <= o2;
+                3: fmap_bram[wr_addr] <= o3;
+                4: fmap_bram[wr_addr] <= o4;
+                5: fmap_bram[wr_addr] <= o5;
+                6: fmap_bram[wr_addr] <= o6;
+                7: fmap_bram[wr_addr] <= o7;
+                8: fmap_bram[wr_addr] <= o8;
+            endcase
+    
+            wr_addr   <= win_idx*9 + write_sel;
+    
+            if (write_sel == 8) begin
+                write_sel <= 0;
+                win_idx   <= win_idx + 1;
+            end else begin
+                write_sel <= write_sel + 1;
+            end
         end else begin
-            conv_out  <= acc[9];     // acc[9] is WIRE → LEGAL
-            out_valid <= pixel_valid;
+            we <= 0;
         end
+    end
+
+
+    /* ===== BRAM read port ===== */
+
+    always @(posedge clk) begin
+        if (rd_en)
+            rd_data <= fmap_bram[rd_addr];
     end
 
 endmodule
