@@ -1,0 +1,95 @@
+`timescale 1ns/1ps
+module tb_image();
+
+    parameter IMG_W = 28;
+    parameter OUT_W = 26;
+    parameter POOL_W = 13;
+    parameter TOTAL_POOL = 169;
+
+    reg clk;
+    reg rst;
+    reg en;
+    reg [12:0] rd_addr;
+    reg rd_en;
+
+    wire signed [19:0] rd_data;
+
+    integer i;
+    integer file;
+
+    top_3x3 dut (
+        .clk(clk),
+        .rst(rst),
+        .en(en),
+        .rd_addr(rd_addr),
+        .rd_en(rd_en),
+        .rd_data(rd_data),
+        .done()
+    );
+
+    // CLOCK
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk;
+    end
+
+    initial begin
+        rst = 1;
+        en = 0;
+        rd_en = 0;
+        rd_addr = 0;
+
+        #20 rst = 0;
+
+        $readmemb("impluse_image.mem", dut.img_bram);
+        $readmemb("weights.mem", dut.weight_bram);
+
+        #10 en = 1;
+
+        // WAIT PROPERLY
+        wait(dut.done);
+        repeat(20) @(posedge clk);
+        
+        if (dut.img_bram[0] === 1'bx)
+            $display("WARNING: img_bram not loaded or not visible");
+        
+        $display("IMG[0]=%d IMG[1]=%d", dut.img_bram[50], dut.img_bram[1]);
+
+        en = 0;
+
+        $display("=== OUTPUT ===");
+
+        file = $fopen("pooled_output.txt","w");
+
+        for (i = 0; i < TOTAL_POOL; i = i + 1) begin
+            rd_addr = i;
+            rd_en = 1;
+
+            @(posedge clk);
+            @(posedge clk);
+
+            if (rd_data === 20'bx)
+                $fdisplay(file,"%0d : 0", i);
+            else
+                $fdisplay(file,"%0d : %d", i, rd_data);
+
+            if (i % 13 == 0)
+                $display("\nRow %0d:", i/13);
+
+            if (rd_data === 20'bx)
+                $write("%6d ", 0);
+            else
+                $write("%6d ", rd_data);
+
+            if ((i+1)%13 == 0)
+                $display("");
+        end
+        
+        
+        $fclose(file);
+        $display("\n=== Simulation finished! Output saved to pooled_output.txt ===");
+        $finish;
+    end
+    
+endmodule
+        
