@@ -1,0 +1,188 @@
+`timescale 1ns/1ps
+module top_3x3 #(
+    parameter IMG_W = 28,
+    parameter OUT_W = 26
+)(
+    input clk,
+    input rst,
+    input en,
+
+    input  [12:0] rd_addr,
+    input         rd_en,
+    output reg signed [19:0] rd_data,
+
+    output reg done
+);
+
+    localparam TOTAL_WINDOWS = OUT_W * OUT_W;
+    localparam POOL_W = OUT_W / 2;
+    localparam TOTAL_POOL = POOL_W * POOL_W;
+
+    // ================= MEMORY =================
+    reg signed [7:0]  img_bram    [0:IMG_W*IMG_W-1];
+    reg signed [7:0]  weight_bram [0:8];
+    reg signed [19:0] pool_bram   [0:TOTAL_POOL-1];
+
+    // ================= INIT MEMORY =================
+    integer i;
+    always @(posedge clk) begin
+        if (rst) begin
+            for (i = 0; i < TOTAL_POOL; i = i + 1)
+                pool_bram[i] <= 0;
+        end
+    end
+
+    // ================= IMAGE STREAM =================
+    reg [12:0] img_addr;
+    wire signed [7:0] pixel_in = img_bram[img_addr];
+
+    always @(posedge clk) begin
+        if (rst) img_addr <= 0;
+        else if (en) img_addr <= img_addr + 1;
+    end
+
+    // ================= WEIGHTS =================
+    wire signed [7:0] k0=weight_bram[0], k1=weight_bram[1], k2=weight_bram[2];
+    wire signed [7:0] k3=weight_bram[3], k4=weight_bram[4], k5=weight_bram[5];
+    wire signed [7:0] k6=weight_bram[6], k7=weight_bram[7], k8=weight_bram[8];
+
+
+    // ================= SLIDING WINDOW =================
+    wire [71:0] win_flat;
+    wire valid_window;
+    
+    sliding_window_3x3 sw (
+        .clk(clk),
+        .rst(rst),
+        .valid_in(en),
+        .pixel_in(pixel_in),
+    
+        .valid_out(valid_window),
+        .win_flat(win_flat)
+    );
+
+    // ================= PIXELS =================
+    wire signed [7:0] p0 = win_flat[6*8 +: 8];
+    wire signed [7:0] p1 = win_flat[7*8 +: 8];
+    wire signed [7:0] p2 = win_flat[8*8 +: 8];
+
+    // ================= SYSTOLIC =================
+    wire signed [19:0] o0,o1,o2,o3,o4,o5,o6,o7,o8;
+
+    systolic_3x3 sa (
+        .clk(clk), .rst(rst), .en(en),
+        .pixel_in0(p0), .pixel_in1(p1), .pixel_in2(p2),
+        .weight_in0(k0), .weight_in1(k1), .weight_in2(k2),
+        .weight_in3(k3), .weight_in4(k4), .weight_in5(k5),
+        .weight_in6(k6), .weight_in7(k7), .weight_in8(k8),
+        .out0(o0),.out1(o1),.out2(o2),
+        .out3(o3),.out4(o4),.out5(o5),
+        .out6(o6),.out7(o7),.out8(o8)
+    );
+
+//wire signed [7:0] w0,w1,w2,w3,w4,w5,w6,w7,w8;
+
+//assign w0 = $signed(win_flat[7:0]);
+//assign w1 = $signed(win_flat[15:8]);
+//assign w2 = $signed(win_flat[23:16]);
+
+//assign w3 = $signed(win_flat[31:24]);
+//assign w4 = $signed(win_flat[39:32]);
+//assign w5 = $signed(win_flat[47:40]);
+
+//assign w6 = $signed(win_flat[55:48]);
+//assign w7 = $signed(win_flat[63:56]);
+//assign w8 = $signed(win_flat[71:64]);
+
+//wire signed [19:0] conv_sum;
+
+//assign conv_sum =
+//      (w0 * 8'sd1) +
+//      (w1 * 8'sd1) +
+//      (w2 * 8'sd1) +
+//      (w3 * 8'sd1) +
+//      (w4 * 8'sd1) +
+//      (w5 * 8'sd1) +
+//      (w6 * 8'sd1) +
+//      (w7 * 8'sd1) +
+//      (w8 * 8'sd1);
+
+    // ================= CONV + RELU =================
+    wire signed [19:0] conv_sum = o8;
+
+    wire signed [19:0] relu_out;
+    ReLU relu_inst (
+        .in(conv_sum),
+        .out(relu_out)
+    );
+
+    // ================= VALID PIPELINE =================
+    reg [7:0] valid_pipe;
+    
+    always @(posedge clk) begin
+        if (rst)
+            valid_pipe <= 8'b0;
+        else if (en)
+            valid_pipe <= {valid_pipe[6:0], 1'b1};
+    end
+
+    wire conv_valid = valid_pipe[7] & valid_window;
+
+    // ================= RESULT VALID =================
+    reg result_valid;
+    always @(posedge clk) begin
+        if (rst)
+            result_valid <= 0;
+        else
+            result_valid <= conv_valid;
+    end
+
+    // ================= MAXPOOL =================
+    wire signed [19:0] pool_out;
+    wire pool_valid;
+
+    maxpool #(
+        .IMG_W(OUT_W),
+        .DATA_W(20)
+    ) pool_inst (
+        .clk(clk),
+        .rst(rst),
+        .en(conv_valid),
+        .data_in(relu_out),
+        .valid_in(result_valid),
+        .data_out(pool_out),
+        .valid_out(pool_valid)
+    );
+
+    // ================= POOL WRITE =================
+    reg [4:0] pr, pc;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            pr <= 0;
+            pc <= 0;
+            done <= 0;
+        end 
+        else if (pool_valid) begin
+
+            pool_bram[pr * POOL_W + pc] <= pool_out;
+
+            if (pc == POOL_W - 1) begin
+                pc <= 0;
+                pr <= pr + 1;
+            end else begin
+                pc <= pc + 1;
+            end
+
+            if (pr == POOL_W-1 && pc == POOL_W-1)
+                done <= 1;
+        end
+    end
+
+    // ================= READ =================
+    always @(posedge clk) begin
+        if (rd_en)
+            rd_data <= pool_bram[rd_addr];
+    end
+
+endmodule
