@@ -47,31 +47,61 @@ module top_3x3 #(
     wire signed [7:0] k6=weight_bram[6], k7=weight_bram[7], k8=weight_bram[8];
 
 
-    // ================= SLIDING WINDOW =================
-    wire [71:0] win_flat;
-    wire valid_window;
-    
-    sliding_window_3x3 sw (
+    // ================= LINE BUFFER =================
+    wire [7:0] row0,row1,row2;
+
+    linebuff_3x3 #(
+        .IMG_W(28)
+    ) lb (
         .clk(clk),
         .rst(rst),
-        .valid_in(en),
+        .en(en),
         .pixel_in(pixel_in),
     
-        .valid_out(valid_window),
-        .win_flat(win_flat)
+        .row0(row0),
+        .row1(row1),
+        .row2(row2)
     );
+    
+//   // ================= SLIDING WINDOW ================= 
+//    wire [71:0] win_flat;
+    wire valid_window;
+    
+    window_gen u_window_gen (
+    .clk       (clk),
+    .rst       (rst),
+    .valid_in  (en),
 
-    // ================= PIXELS =================
-    wire signed [7:0] p0 = win_flat[6*8 +: 8];
-    wire signed [7:0] p1 = win_flat[7*8 +: 8];
-    wire signed [7:0] p2 = win_flat[8*8 +: 8];
+    .row0_pix  (row0),
+    .row1_pix  (row1),
+    .row2_pix  (row2),
+
+    .w00       (w00),
+    .w01       (w01),
+    .w02       (w02),
+
+    .w10       (w10),
+    .w11       (w11),
+    .w12       (w12),
+
+    .w20       (w20),
+    .w21       (w21),
+    .w22       (w22),
+
+    .valid_out (win_valid)
+);
+
+//    // ================= PIXELS =================
+//    wire signed [7:0] p0 = win_flat[6*8 +: 8];
+//    wire signed [7:0] p1 = win_flat[7*8 +: 8];
+//    wire signed [7:0] p2 = win_flat[8*8 +: 8];
 
     // ================= SYSTOLIC =================
     wire signed [19:0] o0,o1,o2,o3,o4,o5,o6,o7,o8;
 
     systolic_3x3 sa (
         .clk(clk), .rst(rst), .en(en),
-        .pixel_in0(p0), .pixel_in1(p1), .pixel_in2(p2),
+        .pixel_in0(row0), .pixel_in1(row1), .pixel_in2(row2),
         .weight_in0(k0), .weight_in1(k1), .weight_in2(k2),
         .weight_in3(k3), .weight_in4(k4), .weight_in5(k5),
         .weight_in6(k6), .weight_in7(k7), .weight_in8(k8),
@@ -108,7 +138,7 @@ module top_3x3 #(
 //      (w8 * 8'sd1);
 
     // ================= CONV + RELU =================
-    wire signed [19:0] conv_sum = o8;
+    wire signed [19:0] conv_sum = o6 + o7 + o8;
 
     wire signed [19:0] relu_out;
     ReLU relu_inst (
@@ -117,17 +147,28 @@ module top_3x3 #(
     );
 
     // ================= VALID PIPELINE =================
-    reg [7:0] valid_pipe;
+//    reg [7:0] valid_pipe;
     
+//    always @(posedge clk) begin
+//        if (rst)
+//            valid_pipe <= 8'b0;
+//        else if (en)
+//            valid_pipe <= {valid_pipe[6:0], 1'b1};
+//    end
+
+    //wire conv_valid = valid_pipe[7] & valid_window;
+    
+    reg [9:0] pixel_count;
+
     always @(posedge clk) begin
-        if (rst)
-            valid_pipe <= 8'b0;
-        else if (en)
-            valid_pipe <= {valid_pipe[6:0], 1'b1};
+        if(rst)
+            pixel_count <= 0;
+        else if(en && pixel_count < IMG_W*IMG_W)
+            pixel_count <= pixel_count + 1;
     end
-
-    wire conv_valid = valid_pipe[7] & valid_window;
-
+    
+    wire conv_valid = (pixel_count >= 62) && (pixel_count < IMG_W*IMG_W);
+    
     // ================= RESULT VALID =================
     reg result_valid;
     always @(posedge clk) begin
