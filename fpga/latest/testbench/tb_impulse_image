@@ -1,21 +1,20 @@
 `timescale 1ns/1ps
-module tb_image();
+
+module tb_conv_debug;
 
     parameter IMG_W = 28;
-    parameter OUT_W = 26;
-    parameter POOL_W = 13;
-    parameter TOTAL_POOL = 169;
 
     reg clk;
     reg rst;
     reg en;
+
     reg [12:0] rd_addr;
     reg rd_en;
 
     wire signed [19:0] rd_data;
+    wire done;
 
     integer i;
-    integer file;
 
     top_3x3 dut (
         .clk(clk),
@@ -24,72 +23,152 @@ module tb_image();
         .rd_addr(rd_addr),
         .rd_en(rd_en),
         .rd_data(rd_data),
-        .done()
+        .done(done)
     );
 
-    // CLOCK
+    // ================= CLOCK =================
+    always #5 clk = ~clk;
+
+    // ================= INIT =================
     initial begin
-        clk = 0;
-        forever #5 clk = ~clk;
+
+        clk     = 0;
+        rst     = 1;
+        en      = 0;
+        rd_addr = 0;
+        rd_en   = 0;
+
+        // Clear image
+        for(i=0;i<784;i=i+1)
+            dut.img_bram[i] = 0;
+
+        // Impulse
+        dut.img_bram[(14*28)+14] = 8'd127;
+
+        // Kernel
+        dut.weight_bram[0] = 8'd1;
+        dut.weight_bram[1] = 8'd2;
+        dut.weight_bram[2] = 8'd3;
+
+        dut.weight_bram[3] = 8'd4;
+        dut.weight_bram[4] = 8'd5;
+        dut.weight_bram[5] = 8'd6;
+
+        dut.weight_bram[6] = 8'd7;
+        dut.weight_bram[7] = 8'd8;
+        dut.weight_bram[8] = 8'd9;
+
+        #20;
+        rst = 0;
+
+        #50;
+        en = 1;
+
     end
 
-    initial begin
-        rst = 1;
-        en = 0;
-        rd_en = 0;
-        rd_addr = 0;
+    // ================= DEBUG =================
+    always @(posedge clk) begin
 
-        #20 rst = 0;
+        if(dut.pixel_count >= 390 &&
+           dut.pixel_count <= 430) begin
 
-        $readmemb("impluse_image.mem", dut.img_bram);
-        $readmemb("weights.mem", dut.weight_bram);
+            $display(
+            "PC=%0d | R0=%4d R1=%4d R2=%4d | O0=%5d O1=%5d O2=%5d | O3=%5d O4=%5d O5=%5d | O6=%5d O7=%5d O8=%5d | SUM=%5d",
+            dut.pixel_count,
 
-        #10 en = 1;
+            dut.row0,
+            dut.row1,
+            dut.row2,
 
-        // WAIT PROPERLY
-        wait(dut.done);
-        repeat(20) @(posedge clk);
-        
-        if (dut.img_bram[0] === 1'bx)
-            $display("WARNING: img_bram not loaded or not visible");
-        
-        $display("IMG[0]=%d IMG[1]=%d", dut.img_bram[50], dut.img_bram[1]);
+            dut.o0,
+            dut.o1,
+            dut.o2,
 
-        en = 0;
+            dut.o3,
+            dut.o4,
+            dut.o5,
 
-        $display("=== OUTPUT ===");
+            dut.o6,
+            dut.o7,
+            dut.o8,
 
-        file = $fopen("pooled_output.txt","w");
+            dut.o6 + dut.o7 + dut.o8
+            );
 
-        for (i = 0; i < TOTAL_POOL; i = i + 1) begin
-            rd_addr = i;
-            rd_en = 1;
-
-            @(posedge clk);
-            @(posedge clk);
-
-            if (rd_data === 20'bx)
-                $fdisplay(file,"%0d : 0", i);
-            else
-                $fdisplay(file,"%0d : %d", i, rd_data);
-
-            if (i % 13 == 0)
-                $display("\nRow %0d:", i/13);
-
-            if (rd_data === 20'bx)
-                $write("%6d ", 0);
-            else
-                $write("%6d ", rd_data);
-
-            if ((i+1)%13 == 0)
-                $display("");
         end
-        
-        
-        $fclose(file);
-        $display("\n=== Simulation finished! Output saved to pooled_output.txt ===");
-        $finish;
+
     end
     
+    always @(posedge clk) begin
+
+    if(dut.pixel_count >= 405 &&
+       dut.pixel_count <= 415) begin
+        $display(
+        "PC=%0d | W0=%0d W1=%0d W2=%0d | W3=%0d W4=%0d W5=%0d | W6=%0d W7=%0d W8=%0d",
+        dut.pixel_count,
+
+        dut.k0,
+        dut.k1,
+        dut.k2,
+
+        dut.k3,
+        dut.k4,
+        dut.k5,
+
+        dut.k6,
+        dut.k7,
+        dut.k8
+        );
+
+    end
+
+end
+
+always @(posedge clk) begin
+
+if(dut.pixel_count >= 400 &&
+   dut.pixel_count <= 420) begin
+
+    $display(
+    "PC=%0d | \n %3d %3d %3d | \n %3d %3d %3d | \n %3d %3d %3d",
+
+    dut.pixel_count,
+
+    dut.w00,dut.w01,dut.w02,
+    dut.w10,dut.w11,dut.w12,
+    dut.w20,dut.w21,dut.w22
+    );
+
+end
+
+end
+
+    // ================= STOP =================
+    initial begin
+
+        wait(dut.pixel_count > 430);
+
+        $display("\n===== DEBUG COMPLETE =====");
+
+        $display("Final:");
+        $display("O6=%0d", dut.o6);
+        $display("O7=%0d", dut.o7);
+        $display("O8=%0d", dut.o8);
+
+        $display("SUM=%0d",
+                 dut.o6 +
+                 dut.o7 +
+                 dut.o8);
+
+        $finish;
+
+    end
+
+    // ================= SAFETY =================
+    initial begin
+        #50000;
+        $display("TIMEOUT");
+        $finish;
+    end
+
 endmodule
-        
