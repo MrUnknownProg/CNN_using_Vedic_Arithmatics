@@ -72,9 +72,9 @@ module top_3x3 #(
     .rst       (rst),
     .valid_in  (en),
 
-    .row0_pix  (row0),
+    .row0_pix  (row2),
     .row1_pix  (row1),
-    .row2_pix  (row2),
+    .row2_pix  (row0),
 
     .w00       (w00),
     .w01       (w01),
