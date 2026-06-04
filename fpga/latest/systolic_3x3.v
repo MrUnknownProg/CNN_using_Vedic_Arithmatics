@@ -58,42 +58,41 @@ module systolic_3x3 (
 
     // ================= DELAYS =================
 
-    reg signed [19:0] d0,d1,d2,d3,d4,d5;
+//    reg signed [19:0] d0,d1,d2,d3,d4,d5;
 
-    always @(posedge clk) begin
-        if(rst) begin
-            d0 <= 0; d1 <= 0; d2 <= 0;
-            d3 <= 0; d4 <= 0; d5 <= 0;
-        end
-        else if(en) begin
-            d0 <= o0;
-            d1 <= o1;
+//   always @(posedge clk) begin
+//    if(rst) begin
+//        d0<=0; d1<=0; d2<=0;
+//        d3<=0; d4<=0; d5<=0;
+//    end
+//    else if(en) begin
+//        d0 <= o0;
+//        d1 <= o1;
+//        d2 <= o2;
 
-            d2 <= o3;
-            d3 <= o4;
-
-            d4 <= o6;
-            d5 <= o7;
-        end
-    end
-
-    // ================= ROW 0 =================
-
-    mac_vedic m00(clk,en,rst,pixel_in0,px0,weight_in0,wx0,20'sd0,o0);
-    mac_vedic m01(clk,en,rst,px0,px1,wx0,wx1,d0,o1);
-    mac_vedic m02(clk,en,rst,px1,px2,wx1,wx2,d1,o2);
+//        d3 <= o3;
+//        d4 <= o4;
+//        d5 <= o5;
+//    end
+//end
 
     // ================= ROW 1 =================
-
-    mac_vedic m10(clk,en,rst,pixel_in1,px3,weight_in3,wx3,o2,o3);
-    mac_vedic m11(clk,en,rst,px3,px4,wx3,wx4,d2,o4);
-    mac_vedic m12(clk,en,rst,px4,px5,wx4,wx5,d3,o5);
-
+    
+    mac_vedic m00(clk,en,rst,pixel_in0,px0,weight_in0,wx0,20'sd0,o0);
+    mac_vedic m01(clk,en,rst,px0,px1,weight_in1,wx1,20'sd0,o1);
+    mac_vedic m02(clk,en,rst,px1,px2,weight_in2,wx2,20'sd0,o2);
+    
     // ================= ROW 2 =================
-
-    mac_vedic m20(clk,en,rst,pixel_in2,px6,weight_in6,wx6,o5,o6);
-    mac_vedic m21(clk,en,rst,px6,px7,wx6,wx7,d4,o7);
-    mac_vedic m22(clk,en,rst,px7,px8,wx7,wx8,d5,o8);
+    
+    mac_vedic m10(clk,en,rst,pixel_in1,px3,weight_in3,wx3,o0,o3);
+    mac_vedic m11(clk,en,rst,px3,px4,weight_in4,wx4,o1,o4);
+    mac_vedic m12(clk,en,rst,px4,px5,weight_in5,wx5,o2,o5);
+    
+    // ================= ROW 3 =================
+    
+    mac_vedic m20(clk,en,rst,pixel_in2,px6,weight_in6,wx6,o3,o6);
+    mac_vedic m21(clk,en,rst,px6,px7,weight_in7,wx7,o4,o7);
+    mac_vedic m22(clk,en,rst,px7,px8,weight_in8,wx8,o5,o8);
 
     assign a10 = o0;
     assign a11 = o1;
