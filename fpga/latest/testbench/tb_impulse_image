@@ -26,10 +26,14 @@ module tb_conv_debug;
         .done(done)
     );
 
-    // ================= CLOCK =================
+    // ============================================================
+    // CLOCK
+    // ============================================================
     always #5 clk = ~clk;
 
-    // ================= INIT =================
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
     initial begin
 
         clk     = 0;
@@ -38,14 +42,25 @@ module tb_conv_debug;
         rd_addr = 0;
         rd_en   = 0;
 
-        // Clear image
-        for(i=0;i<784;i=i+1)
+        // Clear image BRAM
+        for(i=0; i<784; i=i+1)
             dut.img_bram[i] = 0;
 
-        // Impulse
-        dut.img_bram[(14*28)+14] = 8'd127;
+        // Single impulse at center
+        //dut.img_bram[(14*28)+14] = 8'd127;
+        dut.img_bram[(14*28)+14] = 1;
+        dut.img_bram[(14*28)+15] = 2;
+        dut.img_bram[(14*28)+16] = 3;
+        
+        dut.img_bram[(15*28)+14] = 4;
+        dut.img_bram[(15*28)+15] = 5;
+        dut.img_bram[(15*28)+16] = 6;
+        
+        dut.img_bram[(16*28)+14] = 7;
+        dut.img_bram[(16*28)+15] = 8;
+        dut.img_bram[(16*28)+16] = 9;
 
-        // Kernel
+        // 3x3 kernel
         dut.weight_bram[0] = 8'd1;
         dut.weight_bram[1] = 8'd2;
         dut.weight_bram[2] = 8'd3;
@@ -66,96 +81,59 @@ module tb_conv_debug;
 
     end
 
-    // ================= DEBUG =================
-    always @(posedge clk) begin
+    // ============================================================
+    // DEBUG
+    // ============================================================
+   integer max_sum;
 
-        if(dut.pixel_count >= 390 &&
-           dut.pixel_count <= 430) begin
-
-            $display(
-            "PC=%0d | R0=%4d R1=%4d R2=%4d | O0=%5d O1=%5d O2=%5d | O3=%5d O4=%5d O5=%5d | O6=%5d O7=%5d O8=%5d | SUM=%5d",
-            dut.pixel_count,
-
-            dut.row0,
-            dut.row1,
-            dut.row2,
-
-            dut.o0,
-            dut.o1,
-            dut.o2,
-
-            dut.o3,
-            dut.o4,
-            dut.o5,
-
-            dut.o6,
-            dut.o7,
-            dut.o8,
-
-            dut.o6 + dut.o7 + dut.o8
-            );
-
-        end
-
-    end
+    initial
+        max_sum = 0;
     
     always @(posedge clk) begin
-
-    if(dut.pixel_count >= 405 &&
-       dut.pixel_count <= 415) begin
+        if (dut.conv_sum > max_sum)
+            max_sum <= dut.o6 + dut.o7 + dut.o8;
+    end
+   
+   always @(posedge clk) begin
+    if(dut.pixel_count >= 460 &&
+       dut.pixel_count <= 500) begin
+        
+        $display("SUM=%0d", dut.o6 + dut.o7 + dut.o8);
         $display(
-        "PC=%0d | W0=%0d W1=%0d W2=%0d | W3=%0d W4=%0d W5=%0d | W6=%0d W7=%0d W8=%0d",
+        "PC=%0d | W=[%0d %0d %0d | %0d %0d %0d | %0d %0d %0d] | O=[%0d %0d %0d | %0d %0d %0d | %0d %0d %0d]",
         dut.pixel_count,
 
-        dut.k0,
-        dut.k1,
-        dut.k2,
+        dut.w00,dut.w01,dut.w02,
+        dut.w10,dut.w11,dut.w12,
+        dut.w20,dut.w21,dut.w22,
 
-        dut.k3,
-        dut.k4,
-        dut.k5,
-
-        dut.k6,
-        dut.k7,
-        dut.k8
+        dut.o0,dut.o1,dut.o2,
+        dut.o3,dut.o4,dut.o5,
+        dut.o6,dut.o7,dut.o8
         );
 
     end
-
 end
 
-always @(posedge clk) begin
-
-if(dut.pixel_count >= 400 &&
-   dut.pixel_count <= 420) begin
-
-    $display(
-    "PC=%0d | \n %3d %3d %3d | \n %3d %3d %3d | \n %3d %3d %3d",
-
-    dut.pixel_count,
-
-    dut.w00,dut.w01,dut.w02,
-    dut.w10,dut.w11,dut.w12,
-    dut.w20,dut.w21,dut.w22
-    );
-
-end
-
-end
-
-    // ================= STOP =================
+    // ============================================================
+    // STOP CONDITION
+    // ============================================================
     initial begin
 
-        wait(dut.pixel_count > 430);
+        wait(dut.pixel_count > 500);
 
-        $display("\n===== DEBUG COMPLETE =====");
+        $display("\n");
+        $display("########################################################");
+        $display("DEBUG COMPLETE");
+        $display("########################################################");
 
-        $display("Final:");
-        $display("O6=%0d", dut.o6);
-        $display("O7=%0d", dut.o7);
-        $display("O8=%0d", dut.o8);
+        $display("Final Outputs:");
+        $display("O6 = %0d", dut.o6);
+        $display("O7 = %0d", dut.o7);
+        $display("O8 = %0d", dut.o8);
+        $display("MAX O8 = %0d", max_sum);
 
-        $display("SUM=%0d",
+        $display("SUM = %0d",
                  dut.o6 +
                  dut.o7 +
                  dut.o8);
@@ -164,11 +142,16 @@ end
 
     end
 
-    // ================= SAFETY =================
+    // ============================================================
+    // TIMEOUT PROTECTION
+    // ============================================================
     initial begin
+
         #50000;
-        $display("TIMEOUT");
+
+        $display("\nTIMEOUT OCCURRED");
         $finish;
+
     end
 
 endmodule
