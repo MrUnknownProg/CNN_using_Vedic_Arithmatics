@@ -65,31 +65,31 @@ module top_3x3 #(
     
 //   // ================= SLIDING WINDOW ================= 
 //    wire [71:0] win_flat;
-    wire valid_window;
+//    wire valid_window;
     
-    window_gen u_window_gen (
-    .clk       (clk),
-    .rst       (rst),
-    .valid_in  (en),
+//    window_gen u_window_gen (
+//    .clk       (clk),
+//    .rst       (rst),
+//    .valid_in  (en),
 
-    .row0_pix  (row2),
-    .row1_pix  (row1),
-    .row2_pix  (row0),
+//    .row0_pix  (row2),
+//    .row1_pix  (row1),
+//    .row2_pix  (row0),
 
-    .w00       (w00),
-    .w01       (w01),
-    .w02       (w02),
+//    .w00       (w00),
+//    .w01       (w01),
+//    .w02       (w02),
 
-    .w10       (w10),
-    .w11       (w11),
-    .w12       (w12),
+//    .w10       (w10),
+//    .w11       (w11),
+//    .w12       (w12),
 
-    .w20       (w20),
-    .w21       (w21),
-    .w22       (w22),
+//    .w20       (w20),
+//    .w21       (w21),
+//    .w22       (w22),
 
-    .valid_out (win_valid)
-);
+//    .valid_out (win_valid)
+//);
 
 //    // ================= PIXELS =================
 //    wire signed [7:0] p0 = win_flat[6*8 +: 8];
@@ -99,43 +99,46 @@ module top_3x3 #(
     // ================= SYSTOLIC =================
     wire signed [19:0] o0,o1,o2,o3,o4,o5,o6,o7,o8;
 
+    reg signed [7:0] row1_d1;
+    reg signed [7:0] row2_d1, row2_d2;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            row1_d1 <= 0;
+            row2_d1 <= 0;
+            row2_d2 <= 0;
+        end else if (en) begin
+            row1_d1 <= row1;
+            row2_d1 <= row2;
+            row2_d2 <= row2_d1;
+        end
+    end
+
     systolic_3x3 sa (
         .clk(clk), .rst(rst), .en(en),
-        .pixel_in0(row0), .pixel_in1(row1), .pixel_in2(row2),
+        .pixel_in0(row0),    
+        .pixel_in1(row1_d1), 
+        .pixel_in2(row2_d2), 
         .weight_in0(k0), .weight_in1(k1), .weight_in2(k2),
         .weight_in3(k3), .weight_in4(k4), .weight_in5(k5),
         .weight_in6(k6), .weight_in7(k7), .weight_in8(k8),
-        .out0(o0),.out1(o1),.out2(o2),
-        .out3(o3),.out4(o4),.out5(o5),
-        .out6(o6),.out7(o7),.out8(o8)
+        .out0(o0), .out1(o1), .out2(o2),
+        .out3(o3), .out4(o4), .out5(o5),
+        .out6(o6), .out7(o7), .out8(o8)
     );
 
-//wire signed [7:0] w0,w1,w2,w3,w4,w5,w6,w7,w8;
 
-//assign w0 = $signed(win_flat[7:0]);
-//assign w1 = $signed(win_flat[15:8]);
-//assign w2 = $signed(win_flat[23:16]);
+//    systolic_3x3 sa (
+//        .clk(clk), .rst(rst), .en(en),
+//        .pixel_in0(row0), .pixel_in1(row1), .pixel_in2(row2),
+//        .weight_in0(k0), .weight_in1(k1), .weight_in2(k2),
+//        .weight_in3(k3), .weight_in4(k4), .weight_in5(k5),
+//        .weight_in6(k6), .weight_in7(k7), .weight_in8(k8),
+//        .out0(o0),.out1(o1),.out2(o2),
+//        .out3(o3),.out4(o4),.out5(o5),
+//        .out6(o6),.out7(o7),.out8(o8)
+//    );
 
-//assign w3 = $signed(win_flat[31:24]);
-//assign w4 = $signed(win_flat[39:32]);
-//assign w5 = $signed(win_flat[47:40]);
-
-//assign w6 = $signed(win_flat[55:48]);
-//assign w7 = $signed(win_flat[63:56]);
-//assign w8 = $signed(win_flat[71:64]);
-
-//wire signed [19:0] conv_sum;
-
-//assign conv_sum =
-//      (w0 * 8'sd1) +
-//      (w1 * 8'sd1) +
-//      (w2 * 8'sd1) +
-//      (w3 * 8'sd1) +
-//      (w4 * 8'sd1) +
-//      (w5 * 8'sd1) +
-//      (w6 * 8'sd1) +
-//      (w7 * 8'sd1) +
-//      (w8 * 8'sd1);
 
     // ================= CONV + RELU =================
     wire signed [19:0] conv_sum = o6 + o7 + o8;
@@ -157,7 +160,7 @@ module top_3x3 #(
 //    end
 
     //wire conv_valid = valid_pipe[7] & valid_window;
-    
+///////////////////////////////////////////////////////////////////////////////////// 
     reg [9:0] pixel_count;
 
     always @(posedge clk) begin
@@ -168,6 +171,54 @@ module top_3x3 #(
     end
     
     wire conv_valid = (pixel_count >= 62) && (pixel_count < IMG_W*IMG_W);
+
+    // ================= POSITION COUNTERS =================
+
+
+//reg [5:0] row;
+//reg [5:0] col;
+
+//always @(posedge clk) begin
+//    if(rst) begin
+//        row <= 0;
+//        col <= 0;
+//    end
+//    else if(en) begin
+//        if(col == IMG_W-1) begin
+//            col <= 0;
+//            row <= row + 1;
+//        end
+//        else begin
+//            col <= col + 1;
+//        end
+//    end
+//end
+
+//// Valid 3x3 window exists
+//wire window_valid =
+//        (row >= 2) &&
+//        (col >= 2);
+
+//// Systolic latency compensation
+//reg [4:0] valid_pipe;
+
+//always @(posedge clk) begin
+//    if(rst)
+//        valid_pipe <= 5'b0;
+//    else if(en)
+//        valid_pipe <= {valid_pipe[3:0], window_valid};
+//end
+
+//wire conv_valid = valid_pipe[4];
+
+//integer conv_cnt;
+
+//always @(posedge clk) begin
+//    if(rst)
+//        conv_cnt <= 0;
+//    else if(conv_valid)
+//        conv_cnt <= conv_cnt + 1;
+//end
     
     // ================= RESULT VALID =================
     reg result_valid;
