@@ -2,8 +2,6 @@
 
 module tb_conv_debug;
 
-    parameter IMG_W = 28;
-
     reg clk;
     reg rst;
     reg en;
@@ -14,7 +12,18 @@ module tb_conv_debug;
     wire signed [19:0] rd_data;
     wire done;
 
-    integer i;
+    integer conv_count;
+    integer pool_count;
+
+    integer conv_file;
+    integer pool_file;
+
+    integer conv_idx;
+    integer pool_idx;
+
+    reg first_seen;
+    reg conv_valid_d;
+    reg done_d;
 
     top_3x3 dut (
         .clk(clk),
@@ -26,52 +35,48 @@ module tb_conv_debug;
         .done(done)
     );
 
-    // ============================================================
+    //====================================================
     // CLOCK
-    // ============================================================
+    //====================================================
     always #5 clk = ~clk;
 
-    // ============================================================
-    // INITIALIZATION
-    // ============================================================
+    //====================================================
+    // INIT
+    //====================================================
     initial begin
 
-        clk     = 0;
-        rst     = 1;
-        en      = 0;
+        clk = 0;
+        rst = 1;
+        en  = 0;
+
         rd_addr = 0;
         rd_en   = 0;
 
-        // Clear image BRAM
-        for(i=0; i<784; i=i+1)
-            dut.img_bram[i] = 0;
+        conv_count = 0;
+        pool_count = 0;
 
-        // Single impulse at center
-        //dut.img_bram[(14*28)+14] = 8'd127;
-        dut.img_bram[(14*28)+14] = 1;
-        dut.img_bram[(14*28)+15] = 2;
-        dut.img_bram[(14*28)+16] = 3;
-        
-        dut.img_bram[(15*28)+14] = 4;
-        dut.img_bram[(15*28)+15] = 5;
-        dut.img_bram[(15*28)+16] = 6;
-        
-        dut.img_bram[(16*28)+14] = 7;
-        dut.img_bram[(16*28)+15] = 8;
-        dut.img_bram[(16*28)+16] = 9;
+        conv_idx = 0;
+        pool_idx = 0;
 
-        // 3x3 kernel
-        dut.weight_bram[0] = 8'd1;
-        dut.weight_bram[1] = 8'd2;
-        dut.weight_bram[2] = 8'd3;
+        first_seen  = 0;
+        conv_valid_d = 0;
+        done_d = 0;
 
-        dut.weight_bram[3] = 8'd4;
-        dut.weight_bram[4] = 8'd5;
-        dut.weight_bram[5] = 8'd6;
+        conv_file = $fopen("conv_output.txt","w");
+        pool_file = $fopen("pool_output.txt","w");
 
-        dut.weight_bram[6] = 8'd7;
-        dut.weight_bram[7] = 8'd8;
-        dut.weight_bram[8] = 8'd9;
+        if(conv_file == 0) begin
+            $display("ERROR: Cannot open conv_output.txt");
+            $finish;
+        end
+
+        if(pool_file == 0) begin
+            $display("ERROR: Cannot open pool_output.txt");
+            $finish;
+        end
+
+        $readmemb("image.mem",   dut.img_bram);
+        $readmemb("weights.mem", dut.weight_bram);
 
         #20;
         rst = 0;
@@ -81,75 +86,155 @@ module tb_conv_debug;
 
     end
 
-    // ============================================================
-    // DEBUG
-    // ============================================================
-   integer max_sum;
-
-    initial
-        max_sum = 0;
-    
+    //====================================================
+    // FIRST CONV VALID
+    //====================================================
     always @(posedge clk) begin
-        if (dut.conv_sum > max_sum)
-            max_sum <= dut.o6 + dut.o7 + dut.o8;
-    end
-   
-   always @(posedge clk) begin
-    if(dut.pixel_count >= 460 &&
-       dut.pixel_count <= 500) begin
-        
-        $display("SUM=%0d", dut.o6 + dut.o7 + dut.o8);
-        $display(
-        "PC=%0d | W=[%0d %0d %0d | %0d %0d %0d | %0d %0d %0d] | O=[%0d %0d %0d | %0d %0d %0d | %0d %0d %0d]",
-        dut.pixel_count,
 
-        dut.w00,dut.w01,dut.w02,
-        dut.w10,dut.w11,dut.w12,
-        dut.w20,dut.w21,dut.w22,
+        if(!rst && dut.conv_valid && !first_seen) begin
 
-        dut.o0,dut.o1,dut.o2,
-        dut.o3,dut.o4,dut.o5,
-        dut.o6,dut.o7,dut.o8
-        );
+            first_seen <= 1;
+
+            $display("");
+            $display("================================");
+            $display("FIRST CONV_VALID");
+            $display("TIME        = %0t", $time);
+            $display("PIXEL_COUNT = %0d", dut.pixel_count);
+            $display("CONV_SUM    = %0d", dut.conv_sum);
+            $display("================================");
+            $display("");
+
+        end
 
     end
-end
 
-    // ============================================================
-    // STOP CONDITION
-    // ============================================================
+    //====================================================
+    // EDGE DETECTORS
+    //====================================================
+    always @(posedge clk) begin
+
+        conv_valid_d <= dut.conv_valid;
+        done_d       <= done;
+
+        if(!rst) begin
+
+            if(!conv_valid_d && dut.conv_valid)
+                $display("CONV_VALID RISE @ %0t  PC=%0d",
+                         $time,dut.pixel_count);
+
+            if(conv_valid_d && !dut.conv_valid)
+                $display("CONV_VALID FALL @ %0t  PC=%0d",
+                         $time,dut.pixel_count);
+
+            if(!done_d && done) begin
+
+                $display("");
+                $display("================================");
+                $display("DONE ASSERTED");
+                $display("TIME         = %0t", $time);
+                $display("CONV OUTPUTS = %0d", conv_count);
+                $display("POOL OUTPUTS = %0d", pool_count);
+                $display("================================");
+                $display("");
+
+            end
+
+        end
+
+    end
+
+    //====================================================
+    // SAVE CONV OUTPUTS
+    //====================================================
+    always @(posedge clk) begin
+
+        if(!rst && dut.conv_valid) begin
+
+            conv_count <= conv_count + 1;
+
+            $fdisplay(
+                conv_file,
+                "%0d : %0d",
+                conv_idx,
+                $signed(dut.relu_out)
+            );
+
+            conv_idx <= conv_idx + 1;
+
+        end
+
+    end
+
+    //====================================================
+    // SAVE POOL OUTPUTS
+    //====================================================
+    always @(posedge clk) begin
+
+        if(!rst && dut.pool_valid) begin
+
+            pool_count <= pool_count + 1;
+
+            $fdisplay(
+                pool_file,
+                "%0d : %0d",
+                pool_idx,
+                $signed(dut.pool_out)
+            );
+
+            pool_idx <= pool_idx + 1;
+
+        end
+
+    end
+
+
+
+    //====================================================
+    // STOP AFTER EXPECTED CONV OUTPUTS
+    //====================================================
     initial begin
 
-        wait(dut.pixel_count > 500);
+        wait(conv_count == 676);
+        #20;
 
-        $display("\n");
-        $display("########################################################");
-        $display("DEBUG COMPLETE");
-        $display("########################################################");
+        $display("");
+        $display("================================");
+        $display("EXPECTED OUTPUT COUNT REACHED");
+        $display("TIME         = %0t", $time);
+        $display("CONV OUTPUTS = %0d", conv_count);
+        $display("POOL OUTPUTS = %0d", pool_count);
+        $display("DONE         = %b", done);
+        $display("Conv_cnt = %0d", dut.conv_cnt);
+        $display("================================");
+        $display("");
 
-        $display("Final Outputs:");
-        $display("O6 = %0d", dut.o6);
-        $display("O7 = %0d", dut.o7);
-        $display("O8 = %0d", dut.o8);
-        $display("MAX O8 = %0d", max_sum);
-
-        $display("SUM = %0d",
-                 dut.o6 +
-                 dut.o7 +
-                 dut.o8);
+        $fclose(conv_file);
+        $fclose(pool_file);
 
         $finish;
 
     end
 
-    // ============================================================
-    // TIMEOUT PROTECTION
-    // ============================================================
+
+
+    //====================================================
+    // TIMEOUT
+    //====================================================
     initial begin
 
-        #50000;
+        #10000000;
 
-        $display("\nTIMEOUT OCCURRED");
+        $display("");
+        $display("TIMEOUT");
+        $display("CONV OUTPUTS = %0d", conv_count);
+        $display("POOL OUTPUTS = %0d", pool_count);
+
+        if(conv_file != 0)
+            $fclose(conv_file);
+
+        if(pool_file != 0)
+            $fclose(pool_file);
+
         $finish;
 
     end
