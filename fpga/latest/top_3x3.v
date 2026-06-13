@@ -171,6 +171,15 @@ module top_3x3 #(
     end
     
     wire conv_valid = (pixel_count >= 62) && (pixel_count < IMG_W*IMG_W);
+    
+    integer conv_cnt;
+
+    always @(posedge clk) begin
+        if(rst)
+            conv_cnt <= 0;
+        else if(conv_valid)
+            conv_cnt <= conv_cnt + 1;
+    end
 
     // ================= POSITION COUNTERS =================
 
@@ -241,7 +250,7 @@ module top_3x3 #(
         .rst(rst),
         .en(conv_valid),
         .data_in(relu_out),
-        .valid_in(result_valid),
+//        .valid_in(result_valid),
         .data_out(pool_out),
         .valid_out(pool_valid)
     );
