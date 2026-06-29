@@ -117,8 +117,8 @@ module top_3x3 #(
     systolic_3x3 sa (
         .clk(clk), .rst(rst), .en(en),
         .pixel_in0(row0),    
-        .pixel_in1(row1_d1), 
-        .pixel_in2(row2_d2), 
+        .pixel_in1(row1), 
+        .pixel_in2(row2), 
         .weight_in0(k0), .weight_in1(k1), .weight_in2(k2),
         .weight_in3(k3), .weight_in4(k4), .weight_in5(k5),
         .weight_in6(k6), .weight_in7(k7), .weight_in8(k8),
@@ -141,14 +141,75 @@ module top_3x3 #(
 
 
     // ================= CONV + RELU =================
-    wire signed [19:0] conv_sum = o6 + o7 + o8;
+//   reg signed [19:0] o6_d1,o6_d2,o6_d3,o6_d4;
+//reg signed [19:0] o7_d1,o7_d2;
 
-    wire signed [19:0] relu_out;
-    ReLU relu_inst (
-        .in(conv_sum),
-        .out(relu_out)
-    );
+//always @(posedge clk) begin
+//    if(rst) begin
+//        o6_d1 <= 0;
+//        o6_d2 <= 0;
+//        o6_d3 <= 0;
+//        o6_d4 <= 0;
 
+//        o7_d1 <= 0;
+//        o7_d2 <= 0;
+//    end
+//    else if(en) begin
+//        o6_d1 <= o6;
+//        o6_d2 <= o6_d1;
+//        o6_d3 <= o6_d2;
+//        o6_d4 <= o6_d3;
+
+//        o7_d1 <= o7;
+//        o7_d2 <= o7_d1;
+//    end
+//end
+
+reg signed [19:0] o6_d1,o6_d2,o6_d3,o6_d4;
+reg signed [19:0] o7_d1,o7_d2;
+
+always @(posedge clk) begin
+    if(rst) begin
+        o6_d1 <= 0;
+        o6_d2 <= 0;
+        o6_d3 <= 0;
+        o6_d4 <= 0;
+
+        o7_d1 <= 0;
+        o7_d2 <= 0;
+    end
+    else if(en) begin
+        o6_d1 <= o6;
+        o6_d2 <= o6_d1;
+        o6_d3 <= o6_d2;
+        o6_d4 <= o6_d3;
+
+        o7_d1 <= o7;
+        o7_d2 <= o7_d1;
+    end
+end
+
+wire signed [19:0] conv_sum;
+assign conv_sum = o6_d3 + o7_d2 + o8;
+//assign conv_sum = o6 + o7+ o8;        
+
+wire signed [19:0] relu_out;
+ReLU relu_inst (
+    .in(conv_sum),
+    .out(relu_out)
+);
+
+reg signed [19:0] o6_prev,o7_prev,o8_prev;
+
+always @(posedge clk) begin
+    if (o6!=o6_prev || o7!=o7_prev || o8!=o8_prev)
+        $display("T=%0t  o6=%0d  o7=%0d  o8=%0d",
+                 $time,o6,o7,o8);
+
+    o6_prev <= o6;
+    o7_prev <= o7;
+    o8_prev <= o8;
+end
     // ================= VALID PIPELINE =================
 //    reg [7:0] valid_pipe;
     
@@ -161,16 +222,16 @@ module top_3x3 #(
 
     //wire conv_valid = valid_pipe[7] & valid_window;
 ///////////////////////////////////////////////////////////////////////////////////// 
-    reg [9:0] pixel_count;
+//    reg [9:0] pixel_count;
 
-    always @(posedge clk) begin
-        if(rst)
-            pixel_count <= 0;
-        else if(en && pixel_count < IMG_W*IMG_W)
-            pixel_count <= pixel_count + 1;
-    end
+//    always @(posedge clk) begin
+//        if(rst)
+//            pixel_count <= 0;
+//        else if(en && pixel_count < IMG_W*IMG_W)
+//            pixel_count <= pixel_count + 1;
+//    end
     
-    wire conv_valid = (pixel_count >= 62) && (pixel_count < IMG_W*IMG_W);
+//    wire conv_valid = (pixel_count >= 62) && (pixel_count < IMG_W*IMG_W);
 //      wire conv_valid = (pixel_count >= 62) && (pixel_count < TOTAL_WINDOWS);
 
     
@@ -186,41 +247,41 @@ module top_3x3 #(
     // ================= POSITION COUNTERS =================
 
 
-//reg [5:0] row;
-//reg [5:0] col;
+reg [5:0] row;
+reg [5:0] col;
 
-//always @(posedge clk) begin
-//    if(rst) begin
-//        row <= 0;
-//        col <= 0;
-//    end
-//    else if(en) begin
-//        if(col == IMG_W-1) begin
-//            col <= 0;
-//            row <= row + 1;
-//        end
-//        else begin
-//            col <= col + 1;
-//        end
-//    end
-//end
+always @(posedge clk) begin
+    if(rst) begin
+        row <= 0;
+        col <= 0;
+    end
+    else if(en) begin
+        if(col == IMG_W-1) begin
+            col <= 0;
+            row <= row + 1;
+        end
+        else begin
+            col <= col + 1;
+        end
+    end
+end
 
-//// Valid 3x3 window exists
-//wire window_valid =
-//        (row >= 2) &&
-//        (col >= 2);
+// Valid 3x3 window exists
+wire window_valid =
+        (row >= 2) &&
+        (col >= 2);
 
-//// Systolic latency compensation
-//reg [4:0] valid_pipe;
+// Systolic latency compensation
+reg [4:0] valid_pipe;
 
-//always @(posedge clk) begin
-//    if(rst)
-//        valid_pipe <= 5'b0;
-//    else if(en)
-//        valid_pipe <= {valid_pipe[3:0], window_valid};
-//end
+always @(posedge clk) begin
+    if(rst)
+        valid_pipe <= 5'b0;
+    else if(en)
+        valid_pipe <= {valid_pipe[3:0], window_valid};
+end
 
-//wire conv_valid = valid_pipe[4];
+wire conv_valid = valid_pipe[4];
 
 //integer conv_cnt;
 
