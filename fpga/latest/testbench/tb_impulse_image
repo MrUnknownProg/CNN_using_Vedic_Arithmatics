@@ -35,18 +35,9 @@ module tb_conv_debug;
         .done(done)
     );
     
-
-    
-    //====================================================
-    // CLOCK
-    //====================================================
     always #5 clk = ~clk;
 
-    //====================================================
-    // INIT
-    //====================================================
     initial begin
-
         clk = 0;
         rst = 1;
         en  = 0;
@@ -60,7 +51,7 @@ module tb_conv_debug;
         conv_idx = 0;
         pool_idx = 0;
 
-        first_seen  = 0;
+        first_seen   = 0;
         conv_valid_d = 0;
         done_d = 0;
 
@@ -77,90 +68,59 @@ module tb_conv_debug;
             $finish;
         end
 
-        $readmemb("image2.mem",   dut.img_bram);
+        $readmemb("image9.mem",  dut.img_bram);
         $readmemb("weights.mem", dut.weight_bram);
 
         #20;
         rst = 0;
 
         #50;
+        @(posedge clk);
         en = 1;
-
+        @(posedge clk);
+        en = 0;
     end
     
     initial begin
-    #1;
-     
-    $display("\n========================================");
-    $display("KERNEL WEIGHTS");
-    $display("========================================");
-
-    $display("%4d %4d %4d",
-             dut.weight_bram[0], dut.weight_bram[1], dut.weight_bram[2]);
-
-    $display("%4d %4d %4d",
-             dut.weight_bram[3], dut.weight_bram[4], dut.weight_bram[5]);
-
-    $display("%4d %4d %4d",
-             dut.weight_bram[6], dut.weight_bram[7], dut.weight_bram[8]);
-
-    $display("========================================\n");
-    
+        #1;
+        $display("\n========================================");
+        $display("KERNEL WEIGHTS");
+        $display("========================================");
+        $display("%4d %4d %4d", dut.weight_bram[0], dut.weight_bram[1], dut.weight_bram[2]);
+        $display("%4d %4d %4d", dut.weight_bram[3], dut.weight_bram[4], dut.weight_bram[5]);
+        $display("%4d %4d %4d", dut.weight_bram[6], dut.weight_bram[7], dut.weight_bram[8]);
+        $display("========================================\n");
         $display("\nWeights into Systolic:");
         $display("%4d %4d %4d", dut.sa.weight_in0,dut.sa.weight_in1,dut.sa.weight_in2);
         $display("%4d %4d %4d", dut.sa.weight_in3,dut.sa.weight_in4,dut.sa.weight_in5);
         $display("%4d %4d %4d", dut.sa.weight_in6,dut.sa.weight_in7,dut.sa.weight_in8);
-end
+    end
 
-
-    //====================================================
-    // FIRST CONV VALID
-    //====================================================
     always @(posedge clk) begin
-
         if(!rst && dut.conv_valid && !first_seen) begin
-
             first_seen <= 1;
-
             $display("");
             $display("================================");
             $display("FIRST CONV_VALID");
             $display("TIME        = %0t", $time);
-           // $display("PIXEL_COUNT = %0d", dut.pixel_count);
             $display("CONV_SUM    = %0d", dut.conv_sum);
             $display("================================");
             $display("");
-
         end
-
     end
 
-    //====================================================
-    // EDGE DETECTORS
-    //====================================================
     always @(posedge clk) begin
-
         conv_valid_d <= dut.conv_valid;
         done_d       <= done;
 
         if(!rst) begin
-
             if(!conv_valid_d && dut.conv_valid)
-//                $display("CONV_VALID RISE @ %0t  PC=%0d",
-//                         $time,dut.pixel_count);
-                         
-                $display("CONV_VALID RISE @ %0t",
-                         $time);         
+                $display("CONV_VALID RISE @ %0t", $time);         
 
             if(conv_valid_d && !dut.conv_valid)
-//                $display("CONV_VALID FALL @ %0t  PC=%0d",
-//                         $time,dut.pixel_count);
-
-                $display("CONV_VALID FALL @ %0t",
-                         $time);
+                $display("CONV_VALID FALL @ %0t", $time);
 
             if(!done_d && done) begin
-
                 $display("");
                 $display("================================");
                 $display("DONE ASSERTED");
@@ -169,119 +129,74 @@ end
                 $display("POOL OUTPUTS = %0d", pool_count);
                 $display("================================");
                 $display("");
-
             end
-
         end
-
     end
     
-    
-    //====================================================
-// DEBUG COUNTERS
-//====================================================
+    integer conv_valid_count;
+    integer actual_conv_count;
+    reg signed [19:0] prev_conv_sum;
 
-integer conv_valid_count;
-integer actual_conv_count;
+    always @(posedge clk) begin
+        if(rst) begin
+            conv_valid_count <= 0;
+            actual_conv_count <= 0;
+            prev_conv_sum <= 0;
+        end
+        else begin
+            if(dut.conv_valid)
+                conv_valid_count <= conv_valid_count + 1;
 
-reg signed [19:0] prev_conv_sum;
+            if(dut.conv_valid && (dut.conv_sum !== prev_conv_sum))
+                actual_conv_count <= actual_conv_count + 1;
 
-always @(posedge clk)
-begin
-
-    if(rst)
-    begin
-        conv_valid_count <= 0;
-        actual_conv_count <= 0;
-        prev_conv_sum <= 0;
-    end
-    else
-    begin
-
-        // Count every conv_valid cycle
-        if(dut.conv_valid)
-            conv_valid_count <= conv_valid_count + 1;
-
-        // Count every change in convolution output
-        if(dut.conv_valid &&
-           (dut.conv_sum !== prev_conv_sum))
-            actual_conv_count <= actual_conv_count + 1;
-
-        prev_conv_sum <= dut.conv_sum;
-
+            prev_conv_sum <= dut.conv_sum;
+        end
     end
 
-end
-
-wire [31:0] conv_valid_count_dbg;
-wire [31:0] actual_conv_count_dbg;
-
-//assign conv_valid_count_dbg  = conv_valid_count;
-//assign actual_conv_count_dbg = actual_conv_count;
-
-wire conv_valid_dbg = dut.conv_valid;
-wire signed [19:0] conv_sum_dbg = dut.conv_sum;
-//wire [9:0] pixel_count_dbg = dut.pixel_count;
-    
-    //====================================================
-    // DEBUG PRINT
-    //====================================================
+    wire [31:0] conv_valid_count_dbg;
+    wire [31:0] actual_conv_count_dbg;
+    wire conv_valid = dut.conv_valid;
+    wire raw_conv_valid = dut.raw_conv_valid;
     
     integer dbg_file;
 
     initial begin
         dbg_file = $fopen("conv_debug.txt","w");
     end
-    
+        
     integer dbg_row;
     integer dbg_col;
     
-    wire signed [7:0] input_pixel = dut.lb.pixel_in;
-    
-//    wire conv_valid_dbg  = dut.conv_valid;
-    wire signed [19:0] conv_sum_dbg = dut.conv_sum;
-    wire signed [19:0] relu_out_dbg = dut.relu_out;
-    //wire [9:0] pixel_count_dbg = dut.pixel_count;
-    
-//    wire signed [19:0] o0_dbg = dut.o0;
-//    wire signed [19:0] o1_dbg = dut.o1;
-//    wire signed [19:0] o2_dbg = dut.o2;
-//    wire signed [19:0] o3_dbg = dut.o3;
-//    wire signed [19:0] o4_dbg = dut.o4;
-//    wire signed [19:0] o5_dbg = dut.o5;
-    wire signed [19:0] o6_dbg = dut.o6;
-    wire signed [19:0] o7_dbg = dut.o7;
-    wire signed [19:0] o8_dbg = dut.o8;
+    wire signed window_valid = dut.window_valid;   
 
     wire signed [7:0] pixel_in0 = dut.sa.pixel_in0;
     wire signed [7:0] pixel_in1 = dut.sa.pixel_in1;
     wire signed [7:0] pixel_in2 = dut.sa.pixel_in2;
+
+    wire signed [19:0] o6_dbg = dut.o6;
+    wire signed [19:0] o7_dbg = dut.o7;
+    wire signed [19:0] o8_dbg = dut.o8;
+    
+    wire signed [19:0] conv_sum_dbg = dut.conv_sum;
+    wire signed [19:0] relu_out_dbg = dut.relu_out;
     
     wire signed [19:0] data_out = dut.pool_inst.data_out;
     
     always @(posedge clk) begin
-    
         if(!rst && dut.conv_valid) begin
-    
             dbg_row = conv_idx / 26;
             dbg_col = conv_idx % 26;
     
             $fdisplay(
                 dbg_file,
-    
-    //"IDX=%0d ROW=%0d COL=%0d PC=%0d PIX=%0d LB=[%0d %0d %0d] O=[%0d %0d %0d %0d %0d %0d %0d %0d %0d] SUM=%0d",
-    "%0d | %0d %0d | %0d | %0d %0d %0d | %0d %0d %0d %0d %0d %0d %0d %0d %0d | %0d | %0d",
+                "%0d | %0d %0d | %0d %0d %0d | %0d %0d %0d %0d %0d %0d %0d %0d %0d | %0d | %0d",
                 conv_idx,
                 dbg_row,
                 dbg_col,
-    
-                //dut.pixel_count,  %0d
-                $signed(dut.pixel_in),
-    
                 $signed(dut.row0),
                 $signed(dut.row1),
                 $signed(dut.row2),
-    
                 $signed(dut.o0),
                 $signed(dut.o1),
                 $signed(dut.o2),
@@ -291,144 +206,63 @@ wire signed [19:0] conv_sum_dbg = dut.conv_sum;
                 $signed(dut.o6),
                 $signed(dut.o7),
                 $signed(dut.o8),
-    
                 $signed(dut.conv_sum),
-                
                 dut.relu_out
             );
-            
-    
         end
-    
     end
-    
-//    //====================================================
-//// WINDOW DUMP AROUND FIRST MISMATCH
-////====================================================
-
-//always @(posedge clk) begin
-
-//    if(!rst && dut.conv_valid) begin
-
-////       if(conv_idx >= 85 && conv_idx <= 95) begin
-//       if(conv_idx >= 142 && conv_idx <= 155) begin
-//    $display("");
-//    $display("IDX=%0d",conv_idx);
-
-//    $display("%0d %0d %0d",
-//             $signed(dut.sa.px0),
-//             $signed(dut.sa.px1),
-//             $signed(dut.sa.px2));
-                         
-//    $display("%0d %0d %0d",
-//             $signed(dut.sa.px3),
-//             $signed(dut.sa.px4),
-//             $signed(dut.sa.px5));
-                        
-//    $display("%0d %0d %0d",
-//             $signed(dut.sa.px6),
-//             $signed(dut.sa.px7),
-//             $signed(dut.sa.px8));
-
-//    $display("SUM=%0d",dut.conv_sum);
-
-//end
-//end
-//end
-
-    //====================================================
-    // SAVE CONV OUTPUTS
-    //====================================================
+ 
     always @(posedge clk) begin
-
         if(!rst && dut.conv_valid) begin
-
             conv_count <= conv_count + 1;
-
             $fdisplay(
                 conv_file,
                 "%0d : %0d",
                 conv_idx,
                 $signed(dut.relu_out)
             );
-
             conv_idx <= conv_idx + 1;
-
         end
-
     end
 
-    //====================================================
-    // SAVE POOL OUTPUTS
-    //====================================================
     always @(posedge clk) begin
-
         if(!rst && dut.pool_valid) begin
-
             pool_count <= pool_count + 1;
-
             $fdisplay(
                 pool_file,
                 "%0d : %0d",
                 pool_idx,
                 $signed(dut.pool_inst.data_out)
             );
-
             pool_idx <= pool_idx + 1;
-
         end
-
     end
 
-
-
-    //====================================================
-    // STOP AFTER EXPECTED CONV OUTPUTS
-    //====================================================
     initial begin
+        wait(done);
+        #20;
+        $display("");
+        $display("================================");
+        $display("DONE ASSERTED");
+        $display("TIME         = %0t", $time);
+        $display("CONV OUTPUTS = %0d", conv_count);
+        $display("POOL OUTPUTS = %0d", pool_count);
+        $display("================================");
+        $display("");
+        $fclose(conv_file);
+        $fclose(pool_file);
+        $finish;
+    end
 
-    wait(done);
-
-    #20;
-
-    $display("");
-    $display("================================");
-    $display("DONE ASSERTED");
-    $display("TIME         = %0t", $time);
-    $display("CONV OUTPUTS = %0d", conv_count);
-    $display("POOL OUTPUTS = %0d", pool_count);
-    $display("================================");
-    $display("");
-
-    $fclose(conv_file);
-    $fclose(pool_file);
-
-    $finish;
-
-end
-
-
-
-    //====================================================
-    // TIMEOUT
-    //====================================================
     initial begin
-
         #10000000;
-
         $display("");
         $display("TIMEOUT");
         $display("CONV OUTPUTS = %0d", conv_count);
         $display("POOL OUTPUTS = %0d", pool_count);
-
-        if(conv_file != 0)
-            $fclose(conv_file);
-
-        if(pool_file != 0)
-            $fclose(pool_file);
-
+        if(conv_file != 0) $fclose(conv_file);
+        if(pool_file != 0) $fclose(pool_file);
         $finish;
-
     end
 
 endmodule
