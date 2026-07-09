@@ -161,5 +161,30 @@ module systolic_3x3 (
             out8 <= mac_out8;
         end
     end
+reg dbg_done;
 
+always @(posedge clk)
+begin
+    if(rst)
+        dbg_done <= 0;
+
+    else if(!dbg_done && out8 != 0)
+    begin
+        dbg_done <= 1;
+
+        $display("================================");
+        $display("PIXELS");
+
+        $display("IN0=%0d PX0=%0d PX1=%0d",
+                 pixel_in0, px0, px1);
+
+        $display("IN1=%0d PX3=%0d PX4=%0d",
+                 pixel_in1, px3, px4);
+
+        $display("IN2=%0d PX6=%0d PX7=%0d",
+                 pixel_in2, px6, px7);
+
+        $display("================================");
+    end
+end
 endmodule
