@@ -137,7 +137,7 @@ module top_3x3 #(
         end
     end
 
-    wire window_valid = (row >= 2) && (col >= 2);
+    wire window_valid =(col >= 2);
 
     reg [4:0] valid_pipe;
     always @(posedge clk) begin
