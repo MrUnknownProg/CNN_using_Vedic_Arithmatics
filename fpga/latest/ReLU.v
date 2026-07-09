@@ -28,4 +28,3 @@ module ReLU(
 assign out = (in > 0) ? in : 20'd0;
 
 endmodule
-
