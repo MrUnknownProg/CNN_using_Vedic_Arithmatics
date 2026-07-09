@@ -7,11 +7,11 @@ module fc_engine(
     output reg done,
 
     // Feature Memory
-    output reg [7:0] feature_addr,
+    output [7:0] feature_addr,
     input signed [19:0] feature_data,
 
     // Weight ROM
-    output reg [10:0] weight_addr,
+    output [10:0] weight_addr,
     input signed [7:0] weight_data,
 
     // Bias ROM
@@ -40,6 +40,8 @@ localparam DONE  = 2'd3;
 reg [1:0] state;
 
 reg [7:0] feature_idx;
+assign feature_addr = feature_idx;
+assign weight_addr  = neuron_idx * 169 + feature_idx;
 reg signed [31:0] acc;
 
 always @(posedge clk)
@@ -52,9 +54,6 @@ begin
 
         feature_idx <= 0;
         neuron_idx  <= 0;
-
-        feature_addr <= 0;
-        weight_addr  <= 0;
 
         acc  <= 0;
         done <= 0;
@@ -91,8 +90,6 @@ begin
                 feature_idx <= 0;
                 neuron_idx  <= 0;
 
-                feature_addr <= 0;
-                weight_addr  <= 0;
 
                 acc <= 0;
 
@@ -107,12 +104,6 @@ begin
         //--------------------------------------------------
         CALC:
         begin
-
-            feature_addr <= feature_idx;
-
-            weight_addr <=
-                neuron_idx * 169 +
-                feature_idx;
 
             acc <= acc +
                    ($signed(feature_data) *
@@ -181,11 +172,6 @@ end
                 neuron_idx <= neuron_idx + 1;
 
                 feature_idx <= 0;
-
-                feature_addr <= 0;
-
-                weight_addr <=
-                    (neuron_idx + 1) * 169;
 
                 acc <= 0;
 
