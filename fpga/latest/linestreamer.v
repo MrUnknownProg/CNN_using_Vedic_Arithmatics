@@ -154,13 +154,14 @@ module row_streamer #(
                 done <= 1'b0;
             end
 
-            if (running) begin
-                addr0 <= row_base + col;
-                addr1 <= (row_base + col >= IMG_W - 1)   ? (row_base + col + 1)   : 12'd0;
-                addr2 <= (row_base + col >= 2*IMG_W - 2) ? (row_base + col + 2)   : 12'd0;
-                
-                valid <= (row_base + col >= 2*IMG_W - 2);
-            end
+           if (running) begin
+    addr0 <= row_base + col;
+    addr1 <= row_base + IMG_W + col;
+    addr2 <= row_base + 2*IMG_W + col;
+    
+    valid <= running;
+end
+
             else begin
                 addr0 <= 12'd0;
                 addr1 <= 12'd0;
